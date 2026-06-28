@@ -1,0 +1,17 @@
+### General
+.DS_Store
+build/
+out/
+!**/src/**/build/
+!**/src/**/out/
+*.log
+
+### IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea
+
+### Python
+.venv
+__pycache__
