@@ -1,0 +1,24 @@
+[project]
+name = "core"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "mss>=10.2.0",
+    "numpy>=2.5.0",
+    "onnxruntime>=1.27.0",
+    "pillow>=12.2.0",
+    "rapidocr>=3.9.0",
+    "llama-cpp-python>=0.3.30",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
+
+[[tool.uv.index]]
+name = "llama-cpu-index"
+url = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+llama-cpp-python = { index = "llama-cpu-index" }
