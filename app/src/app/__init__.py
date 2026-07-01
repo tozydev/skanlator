@@ -1,37 +1,49 @@
-import random
 import sys
+from os import makedirs
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtWidgets
+from PySide6.QtWidgets import QStyleFactory
 
-
-class MyWidget(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
-
-        self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"]
-
-        self.button = QtWidgets.QPushButton("Click me!")
-        self.text = QtWidgets.QLabel("Hello World", alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.addWidget(self.text)
-        self.layout.addWidget(self.button)
-
-        self.button.clicked.connect(self.magic)
-
-    @QtCore.Slot()
-    def magic(self):
-        self.text.setText(random.choice(self.hello))
+from .config import ConfigManager
+from .files import get_models_dir, get_data_dir
+from .log import setup_logging
+from .ui import FloatingToolbar
+from .worker import SkanlatorController
 
 
 def main() -> None:
-    app = QtWidgets.QApplication([])
+    # Set up initial logging before loading config
+    setup_logging("INFO", "DEBUG")
 
-    widget = MyWidget()
-    widget.resize(800, 600)
-    widget.show()
+    makedirs(get_data_dir(), exist_ok=True)
+    makedirs(get_models_dir(), exist_ok=True)
 
-    sys.exit(app.exec())
+    config_manager = ConfigManager()
+    config_manager.load()
+
+    # Reconfigure logging using levels loaded from configuration
+    console_level = config_manager.get("log_console_level")
+    file_level = config_manager.get("log_file_level")
+    setup_logging(console_level, file_level)
+
+    # Create SkanlatorController and initialize the engine
+    controller = SkanlatorController(config_manager)
+    controller.initialize_engine()
+
+    qt_app = QtWidgets.QApplication(sys.argv)
+    qt_app.setStyle(QStyleFactory.create("windows11"))
+
+    # Pass the controller to the toolbar
+    toolbox = FloatingToolbar(controller=controller)
+    toolbox.show()
+
+    # Run application
+    exit_code = qt_app.exec()
+
+    # Stop and destroy engine on exit
+    controller.destroy_engine()
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
