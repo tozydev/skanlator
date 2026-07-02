@@ -71,3 +71,24 @@ def draw_close(painter: QPainter, size: int):
     painter.setPen(pen)
     painter.drawLine(8, 8, 16, 16)
     painter.drawLine(16, 8, 8, 16)
+
+
+def draw_status_not_ready(painter: QPainter, size: int):
+    """Status not ready icon (red dot)"""
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#E81123")))
+    painter.drawEllipse(int(size / 2) - 4, int(size / 2) - 4, 8, 8)
+
+
+def draw_status_loading(painter: QPainter, size: int):
+    """Status loading icon (gray dot)"""
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#A0A0A0")))
+    painter.drawEllipse(int(size / 2) - 4, int(size / 2) - 4, 8, 8)
+
+
+def draw_status_ready(painter: QPainter, size: int):
+    """Status ready icon (green dot)"""
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#107C10")))
+    painter.drawEllipse(int(size / 2) - 4, int(size / 2) - 4, 8, 8)

@@ -85,11 +85,15 @@ class OverlayRegion(QWidget):
 
             # Draw each result
             pad = self.outline_width
+
+            painter.save()
+            painter.translate(pad, pad)
+
             for res in self.scan_results:
                 # Loop through all coordinates of the polygon to build it dynamically
-                poly_points = [QPointF(pt[0] + pad, pt[1] + pad) for pt in res.box]
+                poly_points = [QPointF(pt[0], pt[1]) for pt in res.box]
                 if len(poly_points) < 3:
-                    continue  # Safety check: need at least a triangle
+                    continue
 
                 # 1. Draw an overlay background as a filled polygon
                 poly = QPolygonF(poly_points)
@@ -116,14 +120,14 @@ class OverlayRegion(QWidget):
                 # Save painter state to apply transformation locally
                 painter.save()
 
-                # Translate to top-left of the box (p0) and rotate by the text direction angle
+                # Translate to top-left of the box (p0) and rotate
                 painter.translate(p0.x(), p0.y())
                 painter.rotate(angle_deg)
 
                 # Define the local coordinate rectangle
                 local_rect = QRectF(0, 0, width, height)
 
-                # Scale font size dynamically using QFontMetrics in local coordinates
+                # Scale font size dynamically
                 from PySide6.QtGui import QFontMetrics
                 font_size = max(4, int(height - 2))
                 font.setPixelSize(font_size)
@@ -133,28 +137,21 @@ class OverlayRegion(QWidget):
                     metrics = QFontMetrics(font)
                     text_width = metrics.horizontalAdvance(res.translated_text)
                     text_height = metrics.height()
-
                     if text_width <= width and text_height <= height:
                         break
                     font_size -= 1
 
                 painter.setFont(font)
 
-                # Draw drop shadow for contrast (single line, centered in local rect)
+                # Draw drop shadow for contrast
                 painter.setPen(QColor(0, 0, 0, 200))
-                painter.drawText(
-                    local_rect.translated(1, 1),
-                    Qt.AlignmentFlag.AlignCenter,
-                    res.translated_text
-                )
+                painter.drawText(local_rect.translated(1, 1), Qt.AlignmentFlag.AlignCenter, res.translated_text)
 
                 # Draw foreground text
                 painter.setPen(fg_color)
-                painter.drawText(
-                    local_rect,
-                    Qt.AlignmentFlag.AlignCenter,
-                    res.translated_text
-                )
+                painter.drawText(local_rect, Qt.AlignmentFlag.AlignCenter, res.translated_text)
 
-                # Restore coordinate system back to normal
+                # Restore coordinate system
                 painter.restore()
+
+            painter.restore()

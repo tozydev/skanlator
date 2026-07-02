@@ -4,13 +4,14 @@ from PySide6.QtCore import Qt, Slot, QSize, QPointF
 from PySide6.QtGui import QColor, QPainter, QBrush, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QToolBar, QWidget, QSizePolicy, QDialog,
-    QVBoxLayout, QGraphicsDropShadowEffect
+    QVBoxLayout, QGraphicsDropShadowEffect, QLabel
 )
 
 from app.worker import SkanlatorController
-from core import CaptureRegion
+from core import CaptureRegion, ServiceStatus
 from .icons import (
-    create_custom_icon, draw_play, draw_stop, draw_crop, draw_settings, draw_close
+    create_custom_icon, draw_play, draw_stop, draw_crop, draw_settings, draw_close,
+    draw_status_loading, draw_status_not_ready, draw_status_ready
 )
 from .overlay import OverlayRegion
 from .region_select import RegionSelector
@@ -75,6 +76,7 @@ class FloatingToolbar(QWidget):
         self.controller = controller
         self.config_manager = controller.config_manager
         self.is_running = False
+        self.service_ready = False
         self.drag_position = None
         self.outline_window = None
 
@@ -128,6 +130,17 @@ class FloatingToolbar(QWidget):
         # 1. Add Drag Handle at the beginning of the toolbar
         self.handle = DragHandle(self)
         self.toolbar.addWidget(self.handle)
+
+        # Service status icons
+        self.status_ready_icon = create_custom_icon(draw_status_ready, size=24)
+        self.status_not_ready_icon = create_custom_icon(draw_status_not_ready, size=24)
+        self.status_loading_icon = create_custom_icon(draw_status_loading, size=24)
+
+        # Service Status Indicator
+        self.service_status_indicator = QLabel(self)
+        self.service_status_indicator.setPixmap(self.status_loading_icon.pixmap(16, 16))
+        self.service_status_indicator.setToolTip("Service status: Initializing...")
+        self.toolbar.addWidget(self.service_status_indicator)
 
         # Define clean icons
         self.play_icon = create_custom_icon(draw_play, size=24)
@@ -188,7 +201,12 @@ class FloatingToolbar(QWidget):
             self.outline_window.show()
 
     def _update_action_toggle_disabled(self):
-        self.action_toggle.setDisabled(self.config_manager.get("capture_region") is None)
+        has_region = self.config_manager.get("capture_region") is not None
+        can_start = self.service_ready and has_region
+        is_disabled = not self.is_running and not can_start
+        logger.debug(
+            f"Updating toggle: is_running={self.is_running}, service_ready={self.service_ready}, has_region={has_region}, can_start={can_start}, disabled={is_disabled}")
+        self.action_toggle.setDisabled(is_disabled)
 
     def update_outline_style(self, hex_color, width):
         if self.outline_window is not None:
@@ -301,6 +319,12 @@ class FloatingToolbar(QWidget):
 
         dialog = SettingsDialog(self.config_manager, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Immediately update UI to reflect re-initialization
+            self.service_ready = False
+            self.service_status_indicator.setPixmap(self.status_loading_icon.pixmap(16, 16))
+            self.service_status_indicator.setToolTip("Service status: Initializing...")
+            self._update_action_toggle_disabled()
+
             # Recreate worker thread and re-initialize engine with updated settings
             self.controller.handle_settings_changed()
 
@@ -332,6 +356,42 @@ class FloatingToolbar(QWidget):
             self.outline_window.scan_results = []
             self.outline_window.update()
 
-    @Slot(str)
-    def on_status_changed(self, status):
-        logger.debug(f"Engine status changed: {status}")
+    @Slot(dict)
+    def on_status_changed(self, status_data):
+        status = status_data.get("status")
+        logger.debug(f"Engine status changed: {status_data}")
+
+        if status == "services_status":
+            services = status_data.get("services", {})
+            all_ready = all(s == ServiceStatus.READY for s in services.values())
+            any_error = any(s == ServiceStatus.ERROR for s in services.values())
+
+            if any_error:
+                self.service_ready = False
+                self.service_status_indicator.setPixmap(self.status_not_ready_icon.pixmap(16, 16))
+                tooltip_text = "Service status: Error\n"
+                for name, service_status in services.items():
+                    tooltip_text += f"- {name.capitalize()}: {service_status.name}\n"
+                self.service_status_indicator.setToolTip(tooltip_text)
+            elif all_ready:
+                self.service_ready = True
+                self.service_status_indicator.setPixmap(self.status_ready_icon.pixmap(16, 16))
+                self.service_status_indicator.setToolTip("Service status: Ready")
+            else:
+                self.service_ready = False
+                self.service_status_indicator.setPixmap(self.status_loading_icon.pixmap(16, 16))
+                tooltip_text = "Service status: Initializing...\n"
+                for name, service_status in services.items():
+                    tooltip_text += f"- {name.capitalize()}: {service_status.name}\n"
+                self.service_status_indicator.setToolTip(tooltip_text)
+
+        elif status == "error":
+            self.service_ready = False
+            self.service_status_indicator.setPixmap(self.status_not_ready_icon.pixmap(16, 16))
+            self.service_status_indicator.setToolTip(
+                f"Service status: Error\n{status_data.get('message', 'Unknown error')}")
+
+        elif status in ("running", "stopped"):
+            self.service_status_indicator.setToolTip(f"Service status: {status}")
+
+        self._update_action_toggle_disabled()

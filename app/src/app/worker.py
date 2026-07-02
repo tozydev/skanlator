@@ -7,7 +7,7 @@ from PySide6.QtCore import QThread, Signal, QObject
 from app.config import ConfigManager
 from core import (
     SkanlatorEngine, CaptureRegion, Language,
-    RapidOcrService, MssScreenCaptureService, LlamaCppTranslation
+    RapidOcrService, MssScreenCaptureService, LlamaCppTranslation, ServiceStatus
 )
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class EngineWorker(QThread):
     # Signals emitted from background asyncio loop thread back to main thread
     scan_success = Signal(object)  # Emits ScanSuccessEvent
     screen_updated = Signal(object)  # Emits ScreenUpdatedEvent
-    status_changed = Signal(str)  # Emits worker status changes
+    status_changed = Signal(dict)  # Emits worker status changes
 
     def __init__(self, config_manager: ConfigManager, parent=None):
         super().__init__(parent)
@@ -30,6 +30,7 @@ class EngineWorker(QThread):
         """Thread entry point running the asyncio event loop."""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        self.status_changed.emit({"status": "initializing"})
 
         try:
             # Resolve absolute paths for models
@@ -73,24 +74,38 @@ class EngineWorker(QThread):
             )
 
             # Warm up models
-            self.loop.call_soon(self.engine.initialize)
+            self.loop.call_soon_threadsafe(self.engine.initialize)
+            self.loop.create_task(self._monitor_initialization())
 
             # Connect callbacks
             self.engine.on_screen_updated(self._handle_screen_updated)
             self.engine.on_scan_success(self._handle_scan_success)
-
-            self.status_changed.emit("initialized")
 
             # Start event loop
             self.loop.run_forever()
 
         except Exception as e:
             logger.error(f"Error in engine worker loop: {e}", exc_info=True)
-            self.status_changed.emit(f"Error: {e}")
+            self.status_changed.emit({"status": "error", "message": str(e)})
         finally:
             if self.loop:
                 self.loop.close()
                 self.loop = None
+
+    async def _monitor_initialization(self):
+        while True:
+            if not self.engine:
+                await asyncio.sleep(0.1)
+                continue
+
+            statuses = self.engine.get_services_status()
+            self.status_changed.emit({"status": "services_status", "services": statuses})
+
+            # Exit loop if all services are initialized (ready or error)
+            if all(s in (ServiceStatus.READY, ServiceStatus.ERROR) for s in statuses.values()):
+                break
+
+            await asyncio.sleep(0.5)
 
     async def _handle_screen_updated(self, event):
         self.screen_updated.emit(event)
@@ -107,10 +122,10 @@ class EngineWorker(QThread):
         try:
             if self.engine:
                 await self.engine.start(self._region)
-                self.status_changed.emit("running")
+                self.status_changed.emit({"status": "running"})
         except Exception as e:
             logger.error(f"Failed to start engine: {e}", exc_info=True)
-            self.status_changed.emit(f"Start Error: {e}")
+            self.status_changed.emit({"status": "error", "message": f"Start Error: {e}"})
 
     def stop_engine(self):
         if self.loop and self.engine:
@@ -120,10 +135,10 @@ class EngineWorker(QThread):
         try:
             if self.engine:
                 await self.engine.stop()
-                self.status_changed.emit("stopped")
+                self.status_changed.emit({"status": "stopped"})
         except Exception as e:
             logger.error(f"Failed to stop engine: {e}", exc_info=True)
-            self.status_changed.emit(f"Stop Error: {e}")
+            self.status_changed.emit({"status": "error", "message": f"Stop Error: {e}"})
 
     def stop_worker(self):
         """Cleanly destroys the engine, stops the loop, and exits the thread."""
@@ -152,7 +167,7 @@ class SkanlatorController(QObject):
     # Proxy signals so UI can subscribe once
     scan_success = Signal(object)
     screen_updated = Signal(object)
-    status_changed = Signal(str)
+    status_changed = Signal(dict)
 
     def __init__(self, config_manager: ConfigManager):
         super().__init__()
