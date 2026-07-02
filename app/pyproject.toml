@@ -16,3 +16,6 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 core = { workspace = true }
+
+[dependency-groups]
+dev = []

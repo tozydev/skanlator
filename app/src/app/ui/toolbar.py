@@ -16,7 +16,7 @@ from .icons import (
 from .overlay import OverlayRegion
 from .region_select import RegionSelector
 from .settings import SettingsDialog
-from .utils import prevent_screen_capture
+from .utils import prevent_screen_capture, set_app_icon
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,8 @@ class FloatingToolbar(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        set_app_icon(self, "skanlator.ico")
 
         # Layout with padding/margins to allow space for the drop shadow
         layout = QVBoxLayout(self)

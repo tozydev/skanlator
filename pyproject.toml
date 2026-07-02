@@ -10,3 +10,8 @@ members = [
     "app",
     "core",
 ]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.21.0",
+]
