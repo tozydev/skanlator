@@ -3,8 +3,16 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Callable, Awaitable
+from enum import auto
 
 import numpy as np
+
+
+class ServiceStatus(Enum):
+    IDLE = auto()
+    INITIALIZING = auto()
+    READY = auto()
+    ERROR = auto()
 
 
 class Language(Enum):
@@ -27,6 +35,8 @@ class ScreenUpdatedEvent:
 
 
 class ScreenCaptureService(ABC):
+    status: ServiceStatus = ServiceStatus.IDLE
+
     @abstractmethod
     async def start(self, region: CaptureRegion) -> None:
         """Start the screen capture service."""
@@ -52,6 +62,8 @@ class OcrResult:
 
 
 class OcrService(ABC):
+    status: ServiceStatus = ServiceStatus.IDLE
+
     @abstractmethod
     def initialize(self) -> None:
         """Perform initialization and warm-up of the OCR models if necessary."""
@@ -62,6 +74,11 @@ class OcrService(ABC):
         """Perform text detection and recognition."""
         pass
 
+    @abstractmethod
+    def destroy(self) -> None:
+        """Destroy the service and release all resources."""
+        pass
+
 
 @dataclass(frozen=True)
 class TranslationResult:
@@ -70,6 +87,8 @@ class TranslationResult:
 
 
 class TranslationService(ABC):
+    status: ServiceStatus = ServiceStatus.IDLE
+
     @abstractmethod
     def initialize(self) -> None:
         """Perform initialization and warm-up of the translation models if necessary."""
@@ -80,4 +99,9 @@ class TranslationService(ABC):
         """Translate a list of OCR results, preserving their boxes and IDs.
         Returns a TranslationResult containing success status and translated texts mapped by OCR result ID.
         """
+        pass
+
+    @abstractmethod
+    def destroy(self) -> None:
+        """Destroy the service and release all resources."""
         pass

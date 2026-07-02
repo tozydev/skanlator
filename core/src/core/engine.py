@@ -75,3 +75,8 @@ class SkanlatorEngine(ABC):
     def on_scan_success(self, callback: Callable[[ScanSuccessEvent], Awaitable[None]]) -> None:
         """Register a callback to be notified when scan results are ready (e.g., to draw overlays)."""
         pass
+
+    @abstractmethod
+    def get_services_status(self) -> Dict[str, Any]:
+        """Get a dictionary with the status of each service."""
+        pass

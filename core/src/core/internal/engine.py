@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Awaitable, Optional
 
 from ..engine import SkanlatorEngine, CaptureRegion, ScanSuccessEvent, ScanResult
-from ..services import OcrService, TranslationService, ScreenCaptureService, ScreenUpdatedEvent, Language
+from ..services import OcrService, TranslationService, ScreenCaptureService, ScreenUpdatedEvent, Language, ServiceStatus
 from ..utils.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -46,12 +46,23 @@ class SkanlatorEngineImpl(SkanlatorEngine):
         if self._is_destroyed:
             raise RuntimeError("SkanlatorEngine has been destroyed and cannot be used.")
 
+    def get_services_status(self) -> dict[str, ServiceStatus]:
+        return {
+            "ocr": self.ocr_service.status,
+            "translation": self.translation_service.status,
+        }
+
     async def _initialize_services(self) -> None:
         try:
             logger.debug("Starting service warm-up for OCR and Translation services.")
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(self._run_service(self.ocr_service.initialize))
-                tg.create_task(self._run_service(self.translation_service.initialize))
+            ocr_task = asyncio.create_task(self._run_service(self.ocr_service.initialize))
+            translation_task = asyncio.create_task(self._run_service(self.translation_service.initialize))
+
+            await asyncio.gather(ocr_task, translation_task, return_exceptions=True)
+
+            logger.info(f"OCR service initialized with status: {self.ocr_service.status}")
+            logger.info(f"Translation service initialized with status: {self.translation_service.status}")
+
         except* asyncio.CancelledError:
             pass
         except* Exception as e:
@@ -117,6 +128,12 @@ class SkanlatorEngineImpl(SkanlatorEngine):
 
         await self._cancel_task(self._active_task, wait=True)
         self._init_task = None
+
+        # Destroy services
+        if self.ocr_service:
+            await self._run_service(self.ocr_service.destroy)
+        if self.translation_service:
+            await self._run_service(self.translation_service.destroy)
 
         if self._executor:
             self._executor.shutdown(wait=True)

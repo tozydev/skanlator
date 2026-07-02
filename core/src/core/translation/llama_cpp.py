@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import llama_cpp
 
-from ..services import TranslationService, OcrResult, TranslationResult, Language
+from ..services import TranslationService, OcrResult, TranslationResult, Language, ServiceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ class LlamaCppTranslation(TranslationService):
             max_tokens: int = 256,
     ) -> None:
         """Initializes the llama.cpp-based Translation Service (CPU-only)."""
+        self.status = ServiceStatus.IDLE
         self.model_path = model_path
         self.n_ctx = n_ctx
         self.prompt_template = prompt_template
@@ -43,24 +44,37 @@ class LlamaCppTranslation(TranslationService):
         self.llm: Optional[llama_cpp.Llama] = None
 
     def initialize(self) -> None:
-        threads = min(min(4, os.cpu_count() or 1), 8)
-        has_vulkan = is_vulkan_available()
+        self.status = ServiceStatus.INITIALIZING
+        try:
+            threads = min(min(4, os.cpu_count() or 1), 8)
+            has_vulkan = is_vulkan_available()
 
-        logger.info(
-            f"Loading Llama.cpp GGUF Model from {self.model_path} with {threads} threads. Vulkan available: {has_vulkan}"
-        )
+            logger.info(
+                f"Loading Llama.cpp GGUF Model from {self.model_path} with {threads} threads. Vulkan available: {has_vulkan}"
+            )
 
-        self.llm = llama_cpp.Llama(
-            model_path=self.model_path,
-            n_ctx=self.n_ctx,
-            n_gpu_layers=-1 if has_vulkan else 0,
-            n_threads=threads,
-            flash_attn=True,
-            verbose=True,
-        )
-        response = self.llm("Hello ", max_tokens=5)
-        logger.debug("Warm-up model response: %s", response)
-        logger.info("Llama.cpp GGUF model loaded successfully.")
+            self.llm = llama_cpp.Llama(
+                model_path=self.model_path,
+                n_ctx=self.n_ctx,
+                n_gpu_layers=-1 if has_vulkan else 0,
+                n_threads=threads,
+                flash_attn=True,
+                verbose=True,
+            )
+            response = self.llm("Hello ", max_tokens=5)
+            self.status = ServiceStatus.READY
+            logger.debug("Warm-up model response: %s", response)
+            logger.info("Llama.cpp GGUF model loaded successfully.")
+        except Exception as e:
+            self.status = ServiceStatus.ERROR
+            logger.error(f"Failed to initialize Llama.cpp model: {e}", exc_info=True)
+            raise
+
+    def destroy(self) -> None:
+        """Destroy the Llama.cpp model and release resources."""
+        if hasattr(self, "llm"):
+            del self.llm
+            logger.info("Llama.cpp model destroyed.")
 
     def translate(self, regions: List[OcrResult], src: Language, dest: Language) -> TranslationResult:
         if not self.llm:

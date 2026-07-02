@@ -5,7 +5,7 @@ import numpy as np
 from rapidocr import RapidOCR, LangDet, LangRec, EngineType, ModelType, OCRVersion
 from rapidocr.utils.output import RapidOCROutput
 
-from ..services import OcrService, OcrResult
+from ..services import OcrService, OcrResult, ServiceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ class RapidOcrService(OcrService):
             rec_model_path: str | bytes,
     ) -> None:
         """Initializes the RapidOCR engine."""
+        self.status = ServiceStatus.IDLE
         params = {
             "Global.use_cls": False,
             "Global.model_root_dir": model_root_dir,
@@ -44,10 +45,22 @@ class RapidOcrService(OcrService):
 
     def initialize(self) -> None:
         """Warm up the RapidOCR models with a dummy image."""
-        dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
-        self.engine(dummy_image)
+        self.status = ServiceStatus.INITIALIZING
+        try:
+            dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
+            self.engine(dummy_image)
+            self.status = ServiceStatus.READY
+            logger.info("RapidOCR engine initialized and warmed up successfully.")
+        except Exception as e:
+            self.status = ServiceStatus.ERROR
+            logger.error(f"Failed to initialize RapidOCR engine: {e}", exc_info=True)
+            raise
 
-        logger.info("RapidOCR engine initialized and warmed up successfully.")
+    def destroy(self) -> None:
+        """Destroy the OCR engine and release resources."""
+        if hasattr(self, "engine"):
+            del self.engine
+            logger.info("RapidOCR engine destroyed.")
 
     def detect(self, image: np.ndarray) -> list[OcrResult]:
         """Perform OCR on the given image synchronously using RapidOCR."""
